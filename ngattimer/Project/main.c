@@ -1,58 +1,129 @@
-//dieu khien 8 led
-#include "stm32f10x_gpio.h"
-#include "stm32f10x_rcc.h"
+#include "stm32f10x.h"
+#include <stdint.h>
+#include <stdbool.h>
 
-uint16_t sangdan[8]={0xFE, 0xFC, 0xF8, 0xF0, 0xE0, 0xC0, 0x80, 0x00};
-void Delay(uint32_t);
 void GPIO_Config(void);
-void Clock_Config(void);
+void TIM3_Config_Delay(void);
+void TIM2_Config_IRQ_500ms(void);
+void TIM2_EnableIRQ(bool en);
+void delay_ms(uint32_t ms);
+bool Button_WasPressed(void);
 
-int main(void){
-    Clock_Config(); // configuraion clock
-    SystemCoreClockUpdate(); // update SystemCoreClock varibale
-    GPIO_Config();
-    
-    while(1){
-        for( int i = 0; i < 8; i++){
-            GPIO_Write(GPIOC, sangdan[i]);
-            Delay(100);   
+#define LED1_PIN    0   // PA0
+#define LD2_PIN     5   // PA5
+#define BUTTON_PIN  13  // PC13
+
+static volatile bool ld2_irq_mode = false; 
+
+int main(void)
+{
+    GPIO_Config();           
+    TIM3_Config_Delay();     
+    TIM2_Config_IRQ_500ms(); 
+    TIM2_EnableIRQ(false);   
+
+    while(1)
+    {
+        GPIOA->ODR &= ~(1 << LED1_PIN);           
+        if (!ld2_irq_mode) GPIOA->ODR &= ~(1 << LD2_PIN); 
+        delay_ms(500);
+
+        /* ON 500 ms */
+        GPIOA->ODR |=  (1 << LED1_PIN);           
+        if (!ld2_irq_mode) GPIOA->ODR |=  (1 << LD2_PIN); 
+        delay_ms(500);
+
+        if (Button_WasPressed()) {
+            ld2_irq_mode = !ld2_irq_mode;
+            TIM2_EnableIRQ(ld2_irq_mode);
         }
     }
 }
-/*Delay tuong doi*/
-void Delay(uint32_t t){
-    unsigned int i,j;
-    
-    for(i=0;i<t;i++){
-        for(j=0;j< 0x2AFF; j++);
-    }
 
+void GPIO_Config(void)
+{
+    RCC->APB2ENR |= (1 << 0)  
+                  | (1 << 2)  
+                  | (1 << 4);
+
+    GPIOA->CRL &= ~(0xF << (LED1_PIN * 4));
+    GPIOA->CRL |=  (0x2 << (LED1_PIN * 4));
+
+    GPIOA->CRL &= ~(0xF << (LD2_PIN * 4));
+    GPIOA->CRL |=  (0x2 << (LD2_PIN * 4));
+
+    GPIOC->CRH &= ~(0xF << ((BUTTON_PIN - 8) * 4));
+    GPIOC->CRH |=  (0x8 << ((BUTTON_PIN - 8) * 4)); // 1000b
+    GPIOC->ODR |=  (1 << BUTTON_PIN);
+
+    GPIOA->ODR &= ~(1 << LD2_PIN);
+    GPIOA->ODR &= ~(1 << LED1_PIN);
 }
-void GPIO_Config(){
-    GPIO_InitTypeDef GPIO_InitStructure;
-    /*enble clock for GPIOC*/
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
-    /*Configuration GPIO pin*/
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Pin  = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
-    GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+
+void TIM3_Config_Delay(void)
+{
+    RCC->APB1ENR |= (1 << 1);    
+    TIM3->PSC = 72 - 1;         
+    TIM3->ARR = 0xFFFF;
+    TIM3->CNT = 0;
+    TIM3->CR1 |= (1 << 0);      
 }
-void Clock_Config(void){
-    /* RCC system reset */
-    RCC_DeInit();
-    /* HCLK = SYSCLK */
-    RCC_HCLKConfig(RCC_SYSCLK_Div1); 
-    /* PCLK2 = HCLK */
-    RCC_PCLK2Config(RCC_HCLK_Div2);
-    /* PCLK1 = HCLK/2 */
-    RCC_PCLK1Config(RCC_HCLK_Div2);
-    /*enable HSI source clock*/
-    RCC_HSICmd(ENABLE); 
-    /* Wait till PLL is ready */
-    while (RCC_GetFlagStatus(RCC_FLAG_HSIRDY) == RESET){}
-    /* Select PLL as system clock source */
-    RCC_SYSCLKConfig(RCC_SYSCLKSource_HSI);
-    /* Wait till PLL is used as system clock source */
-    while(RCC_GetSYSCLKSource() != 0x00) {}    
+
+void delay_ms(uint32_t ms)
+{
+    for (uint32_t i = 0; i < ms; i++)
+    {
+        TIM3->CNT = 0;
+        while (TIM3->CNT < 1000); 
+    }
+}
+
+
+void TIM2_Config_IRQ_500ms(void)
+{
+    RCC->APB1ENR |= (1 << 0); 
+
+    TIM2->PSC = 7200 - 1;     
+    TIM2->ARR = 5000 - 1;     
+    TIM2->CNT = 0;
+
+    TIM2->CR1 |= (1 << 0);    
+}
+
+void TIM2_EnableIRQ(bool en)
+{
+    if (en) {
+        TIM2->SR  &= ~(1 << 0);   
+        TIM2->CNT  = 0;           
+        TIM2->DIER |=  (1 << 0);  
+        NVIC_ClearPendingIRQ(TIM2_IRQn);
+        NVIC_SetPriority(TIM2_IRQn, 2);
+        NVIC_EnableIRQ(TIM2_IRQn);
+    } else {
+        TIM2->DIER &= ~(1 << 0);  
+        NVIC_DisableIRQ(TIM2_IRQn);
+    }
+}
+
+void TIM2_IRQHandler(void)
+{
+    if (TIM2->SR & (1 << 0))   
+    {
+        TIM2->SR &= ~(1 << 0);         
+        GPIOA->ODR ^= (1 << LD2_PIN);  
+    }
+}
+
+bool Button_WasPressed(void)
+{
+    if ((GPIOC->IDR & (1 << BUTTON_PIN)) == 0) { 
+        delay_ms(20);
+        if ((GPIOC->IDR & (1 << BUTTON_PIN)) == 0) {
+            while ((GPIOC->IDR & (1 << BUTTON_PIN)) == 0){};
+            delay_ms(20);
+            return true;
+        }
+    }
+    return false;
 }
