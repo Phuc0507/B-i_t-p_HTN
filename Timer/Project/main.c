@@ -1,58 +1,50 @@
-//dieu khien 8 led
-#include "stm32f10x_gpio.h"
-#include "stm32f10x_rcc.h"
+#include "stm32f10x.h"
 
-uint16_t sangdan[8]={0xFE, 0xFC, 0xF8, 0xF0, 0xE0, 0xC0, 0x80, 0x00};
-void Delay(uint32_t);
 void GPIO_Config(void);
-void Clock_Config(void);
+void TIM2_Config_Delay(void);
+void delay_ms(uint32_t ms);
 
-int main(void){
-    Clock_Config(); // configuraion clock
-    SystemCoreClockUpdate(); // update SystemCoreClock varibale
+int main(void)
+{
     GPIO_Config();
-    
-    while(1){
-        for( int i = 0; i < 8; i++){
-            GPIO_Write(GPIOC, sangdan[i]);
-            Delay(100);   
-        }
-    }
-}
-/*Delay tuong doi*/
-void Delay(uint32_t t){
-    unsigned int i,j;
-    
-    for(i=0;i<t;i++){
-        for(j=0;j< 0x2AFF; j++);
-    }
+    TIM2_Config_Delay();
 
+    while(1)
+    {
+        GPIOA->ODR &= ~(1 << 5); 
+        delay_ms(500);
+
+        GPIOA->ODR |= (1 << 5);
+        delay_ms(500);
+    }
 }
-void GPIO_Config(){
-    GPIO_InitTypeDef GPIO_InitStructure;
-    /*enble clock for GPIOC*/
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
-    /*Configuration GPIO pin*/
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Pin  = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_4 | GPIO_Pin_5 | GPIO_Pin_6 | GPIO_Pin_7;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
-    GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+void GPIO_Config(void)
+{
+    RCC->APB2ENR |= (1 << 2); 
+
+    GPIOA->CRL &= ~(0xF << 20);
+    GPIOA->CRL |=  (0x2 << 20);
+    GPIOA->ODR |=  (1 << 5); 
 }
-void Clock_Config(void){
-    /* RCC system reset */
-    RCC_DeInit();
-    /* HCLK = SYSCLK */
-    RCC_HCLKConfig(RCC_SYSCLK_Div1); 
-    /* PCLK2 = HCLK */
-    RCC_PCLK2Config(RCC_HCLK_Div2);
-    /* PCLK1 = HCLK/2 */
-    RCC_PCLK1Config(RCC_HCLK_Div2);
-    /*enable HSI source clock*/
-    RCC_HSICmd(ENABLE); 
-    /* Wait till PLL is ready */
-    while (RCC_GetFlagStatus(RCC_FLAG_HSIRDY) == RESET){}
-    /* Select PLL as system clock source */
-    RCC_SYSCLKConfig(RCC_SYSCLKSource_HSI);
-    /* Wait till PLL is used as system clock source */
-    while(RCC_GetSYSCLKSource() != 0x00) {}    
+
+void TIM2_Config_Delay(void)
+{
+    RCC->APB1ENR |= (1 << 0); 
+
+    TIM2->PSC = 72 - 1;  
+    TIM2->ARR = 0xFFFF;  
+    TIM2->CR1 |= (1 << 0); 
 }
+
+void delay_ms(uint32_t ms)
+{
+    uint32_t i;
+    for(i = 0; i < ms; i++)
+    {
+        TIM2->CNT = 0;                  
+        while(TIM2->CNT < 1000);        
+    }
+}
+
+
