@@ -21,7 +21,7 @@ static void delay_ms(uint32_t ms){
 #define LCD_BLK_PORT  GPIOB
 #define LCD_BLK_PIN   GPIO_Pin_10
 
-/* ================= UART1 ================= */
+/* UART1 */
 static void UART1_Init(void){
   GPIO_InitTypeDef g; USART_InitTypeDef u;
 
@@ -57,7 +57,7 @@ static char uart_getc(void){
   return (char)USART_ReceiveData(USART1);
 }
 
-/* ================= SPI1 (Mode 3) ================= */
+/* SPI1 (Mode 3) */
 static void SPI1_Init_Master(void){
   GPIO_InitTypeDef g; SPI_InitTypeDef s;
 
@@ -103,7 +103,7 @@ static inline uint8_t SPI1_TxRx(uint8_t b){
   return (uint8_t)SPI_I2S_ReceiveData(SPI1);
 }
 
-/* =============== ST7789 low-level (NO CS) =============== */
+/* ST7789 low-level (NO CS) */
 static void LCD_WriteCommand(uint8_t cmd){
   GPIO_ResetBits(LCD_DC_PORT, LCD_DC_PIN); // DC=0: command
   SPI1_TxRx(cmd);
@@ -143,7 +143,7 @@ static void LCD_FillScreen(uint16_t color){
   for (uint32_t i=0; i<240UL*240UL; ++i) LCD_WriteData16(color);
 }
 
-/* ===== Font 5x7 rút gon (ASCII 0x20..0x7E) ===== */
+/* Font 5x7 rút gon (ASCII 0x20..0x7E) */
 static const uint8_t font5x7[] = {
   0x00,0x00,0x00,0x00,0x00, /* SP */
   0x00,0x00,0x5F,0x00,0x00, /* ! */
